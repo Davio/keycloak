@@ -46,7 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -255,12 +255,11 @@ public class ClientAdapter implements ClientModel, JpaModel<ClientEntity> {
     }
 
     @Override
-    public Set<RoleModel> getScopeMappings() {
+    public Stream<RoleModel> getScopeMappingsStream() {
         return getEntity().getScopeMapping().stream()
                 .map(RoleEntity::getId)
                 .map(realm::getRoleById)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                .filter(Objects::nonNull);
     }
 
     @Override
@@ -355,6 +354,18 @@ public class ClientAdapter implements ClientModel, JpaModel<ClientEntity> {
     public void addClientScope(ClientScopeModel clientScope, boolean defaultScope) {
         if (getClientScopes(defaultScope, false).containsKey(clientScope.getName())) return;
 
+        persist(clientScope, defaultScope);
+    }
+
+    @Override
+    public void addClientScopes(Set<ClientScopeModel> clientScopes, boolean defaultScope) {
+        Map<String, ClientScopeModel> existingClientScopes = getClientScopes(defaultScope, false);
+        clientScopes.stream()
+                .filter(clientScope -> !existingClientScopes.containsKey(clientScope.getName()))
+                .forEach(clientScope -> persist(clientScope, defaultScope));
+    }
+
+    private void persist(ClientScopeModel clientScope, boolean defaultScope) {
         ClientScopeClientMappingEntity entity = new ClientScopeClientMappingEntity();
         entity.setClientScope(ClientScopeAdapter.toClientScopeEntity(clientScope, em));
         entity.setClient(getEntity());
@@ -641,37 +652,37 @@ public class ClientAdapter implements ClientModel, JpaModel<ClientEntity> {
 
     @Override
     public RoleModel getRole(String name) {
-        return session.realms().getClientRole(realm, this, name);
+        return session.roles().getClientRole(this, name);
     }
 
     @Override
     public RoleModel addRole(String name) {
-        return session.realms().addClientRole(realm, this, name);
+        return session.roles().addClientRole(this, name);
     }
 
     @Override
     public RoleModel addRole(String id, String name) {
-        return session.realms().addClientRole(realm, this, id, name);
+        return session.roles().addClientRole(this, id, name);
     }
 
     @Override
     public boolean removeRole(RoleModel roleModel) {
-        return session.realms().removeRole(realm, roleModel);
+        return session.roles().removeRole(roleModel);
     }
 
     @Override
-    public Set<RoleModel> getRoles() {
-        return session.realms().getClientRoles(realm, this);
+    public Stream<RoleModel> getRolesStream() {
+        return session.roles().getClientRolesStream(this, null, null);
     }
-    
+
     @Override
-    public Set<RoleModel> getRoles(Integer first, Integer max) {
-        return session.realms().getClientRoles(realm, this, first, max);
+    public Stream<RoleModel> getRolesStream(Integer first, Integer max) {
+        return session.roles().getClientRolesStream(this, first, max);
     }
-    
+
     @Override
-    public Set<RoleModel> searchForRoles(String search, Integer first, Integer max) {
-        return session.realms().searchForClientRoles(realm, this, search, first, max);
+    public Stream<RoleModel> searchForRolesStream(String search, Integer first, Integer max) {
+        return session.roles().searchForClientRolesStream(this, search, first, max);
     }
 
     @Override

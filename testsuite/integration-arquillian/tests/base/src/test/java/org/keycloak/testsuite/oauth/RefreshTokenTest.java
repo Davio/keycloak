@@ -83,13 +83,15 @@ import static org.junit.Assert.assertTrue;
 import static org.keycloak.testsuite.Assert.assertExpiration;
 import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
 import static org.keycloak.testsuite.admin.ApiUtil.findUserByUsername;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_SSL_REQUIRED;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
 import static org.keycloak.testsuite.util.OAuthClient.AUTH_SERVER_ROOT;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  */
 public class RefreshTokenTest extends AbstractKeycloakTest {
+
+    public static final int ALLOWED_CLOCK_SKEW = 3;
 
     @Page
     protected LoginPage loginPage;
@@ -220,7 +222,7 @@ public class RefreshTokenTest extends AbstractKeycloakTest {
 
         Assert.assertThat(token.getExpiration() - getCurrentTime(), allOf(greaterThanOrEqualTo(200), lessThanOrEqualTo(350)));
         int actual = refreshToken.getExpiration() - getCurrentTime();
-        Assert.assertThat(actual, allOf(greaterThanOrEqualTo(1799), lessThanOrEqualTo(1800)));
+        Assert.assertThat(actual, allOf(greaterThanOrEqualTo(1799 - ALLOWED_CLOCK_SKEW), lessThanOrEqualTo(1800 + ALLOWED_CLOCK_SKEW)));
 
         assertEquals(sessionId, refreshToken.getSessionState());
 
@@ -236,7 +238,7 @@ public class RefreshTokenTest extends AbstractKeycloakTest {
         assertEquals(sessionId, refreshedRefreshToken.getSessionState());
 
         Assert.assertThat(response.getExpiresIn(), allOf(greaterThanOrEqualTo(250), lessThanOrEqualTo(300)));
-        Assert.assertThat(refreshedToken.getExpiration() - getCurrentTime(), allOf(greaterThanOrEqualTo(250), lessThanOrEqualTo(300)));
+        Assert.assertThat(refreshedToken.getExpiration() - getCurrentTime(), allOf(greaterThanOrEqualTo(250 - ALLOWED_CLOCK_SKEW), lessThanOrEqualTo(300 + ALLOWED_CLOCK_SKEW)));
 
         Assert.assertThat(refreshedToken.getExpiration() - token.getExpiration(), allOf(greaterThanOrEqualTo(1), lessThanOrEqualTo(10)));
         Assert.assertThat(refreshedRefreshToken.getExpiration() - refreshToken.getExpiration(), allOf(greaterThanOrEqualTo(1), lessThanOrEqualTo(10)));

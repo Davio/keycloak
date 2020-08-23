@@ -17,7 +17,6 @@
 package org.keycloak.services.managers;
 
 import org.keycloak.Config;
-import org.keycloak.common.Profile;
 import org.keycloak.common.enums.SslRequired;
 import org.keycloak.migration.MigrationModelManager;
 import org.keycloak.models.AccountRoles;
@@ -178,7 +177,7 @@ public class RealmManager {
     }
 
     protected void setupAdminConsoleLocaleMapper(RealmModel realm) {
-        ClientModel adminConsole = realm.getClientByClientId(Constants.ADMIN_CONSOLE_CLIENT_ID);
+        ClientModel adminConsole = session.clients().getClientByClientId(realm, Constants.ADMIN_CONSOLE_CLIENT_ID);
         ProtocolMapperModel localeMapper = adminConsole.getProtocolMapperByName(OIDCLoginProtocol.LOGIN_PROTOCOL, OIDCLoginProtocolFactory.LOCALE);
 
         if (localeMapper == null) {
@@ -252,7 +251,7 @@ public class RealmManager {
         boolean removed = model.removeRealm(realm.getId());
         if (removed) {
             if (masterAdminClient != null) {
-                new ClientManager(this).removeClient(getKeycloakAdminstrationRealm(), masterAdminClient);
+                session.clients().removeClient(getKeycloakAdminstrationRealm(), masterAdminClient.getId());
             }
 
             UserSessionProvider sessions = session.sessions();
@@ -304,11 +303,11 @@ public class RealmManager {
         String adminRealmId = Config.getAdminRealm();
         RealmModel adminRealm = model.getRealm(adminRealmId);
         ClientModel masterApp = adminRealm.getClientByClientId(KeycloakModelUtils.getMasterRealmAdminApplicationClientId(realm.getName()));
-        if (masterApp != null) {
-            realm.setMasterAdminClient(masterApp);
-        }  else {
+        if (masterApp == null) {
             createMasterAdminManagement(realm);
+            return;
         }
+        realm.setMasterAdminClient(masterApp);
     }
 
     private void createMasterAdminManagement(RealmModel realm) {
@@ -522,22 +521,19 @@ public class RealmManager {
         if (!hasRealmAdminManagementClient(rep)) setupRealmAdminManagement(realm);
         if (!hasAccountManagementClient(rep)) setupAccountManagement(realm);
 
-        boolean postponeImpersonationSetup = false;
-        if (hasRealmAdminManagementClient(rep)) {
-            postponeImpersonationSetup = true;
-        } else {
+        boolean postponeImpersonationSetup = hasRealmAdminManagementClient(rep);
+        if (!postponeImpersonationSetup) {
             setupImpersonationService(realm);
         }
-
 
         if (!hasBrokerClient(rep)) setupBrokerService(realm);
         if (!hasAdminConsoleClient(rep)) setupAdminConsole(realm);
 
         boolean postponeAdminCliSetup = false;
         if (!hasAdminCliClient(rep)) {
-            if (hasRealmAdminManagementClient(rep)) {
-                postponeAdminCliSetup = true;
-            } else {
+            postponeAdminCliSetup = hasRealmAdminManagementClient(rep);
+            
+            if(!postponeAdminCliSetup) {
                 setupAdminCli(realm);
             }
         }
@@ -551,26 +547,8 @@ public class RealmManager {
         }
 
         RepresentationToModel.importRealm(session, rep, realm, skipUserDependent);
-        List<ClientRepresentation> clients = rep.getClients();
 
-        if (clients != null) {
-            ClientManager clientManager = new ClientManager(new RealmManager(session));
-
-            for (ClientRepresentation client : clients) {
-                ClientModel clientModel = realm.getClientById(client.getId());
-
-                if (clientModel.isServiceAccountsEnabled()) {
-                    clientManager.enableServiceAccount(clientModel);
-                }
-
-                if (Boolean.TRUE.equals(client.getAuthorizationServicesEnabled())) {
-                    RepresentationToModel.createResourceServer(clientModel, session, true);
-                    if(!skipUserDependent) {
-                        RepresentationToModel.importAuthorizationSettings(client, clientModel, session);
-                    }
-                }
-            }
-        }
+        setupClientServiceAccountsAndAuthorizationOnImport(rep, skipUserDependent);
 
         setupAdminConsoleLocaleMapper(realm);
 
@@ -588,8 +566,7 @@ public class RealmManager {
         // I need to postpone impersonation because it needs "realm-management" client and its roles set
         if (postponeImpersonationSetup) {
             setupImpersonationService(realm);
-            String realmAdminClientId = getRealmAdminClientId(realm);
-         }
+        }
 
         if (postponeAdminCliSetup) {
             setupAdminCli(realm);
@@ -742,4 +719,31 @@ public class RealmManager {
 
     }
 
+    public void setupClientServiceAccountsAndAuthorizationOnImport(RealmRepresentation rep, boolean skipUserDependent) {
+        List<ClientRepresentation> clients = rep.getClients();
+        // do not initialize services accounts or authorization if skipUserDependent
+        // they need the users and should be done at the end in dir import
+        if (clients != null && !skipUserDependent) {
+            ClientManager clientManager = new ClientManager(this);
+
+            for (ClientRepresentation client : clients) {
+                ClientModel clientModel = this.getRealmByName(rep.getRealm()).getClientById(client.getId());
+
+                UserModel serviceAccount = null;
+                if (clientModel.isServiceAccountsEnabled()) {
+                    serviceAccount = this.getSession().users().getServiceAccount(clientModel);
+                    if (serviceAccount == null) {
+                        // initialize the service account if the account is missing
+                        clientManager.enableServiceAccount(clientModel);
+                    }
+                }
+
+                if (Boolean.TRUE.equals(client.getAuthorizationServicesEnabled())) {
+                    // just create the default roles if the service account was missing in the import
+                    RepresentationToModel.createResourceServer(clientModel, session, serviceAccount == null);
+                    RepresentationToModel.importAuthorizationSettings(client, clientModel, session);
+                }
+            }
+        }
+    }
 }

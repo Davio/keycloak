@@ -24,8 +24,12 @@ import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.UserStorageProviderModel;
 import org.keycloak.storage.client.ClientStorageProvider;
 import org.keycloak.storage.client.ClientStorageProviderModel;
+import org.keycloak.storage.role.RoleStorageProvider;
+import org.keycloak.storage.role.RoleStorageProviderModel;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -202,6 +206,12 @@ public interface RealmModel extends RoleContainerModel {
     int getClientSessionMaxLifespan();
     void setClientSessionMaxLifespan(int seconds);
 
+    int getClientOfflineSessionIdleTimeout();
+    void setClientOfflineSessionIdleTimeout(int seconds);
+
+    int getClientOfflineSessionMaxLifespan();
+    void setClientOfflineSessionMaxLifespan(int seconds);
+
     void setAccessTokenLifespan(int seconds);
 
     int getAccessTokenLifespanForImplicitFlow();
@@ -278,11 +288,28 @@ public interface RealmModel extends RoleContainerModel {
 
     void removeDefaultGroup(GroupModel group);
 
-    List<ClientModel> getClients();
-    List<ClientModel> getClients(Integer firstResult, Integer maxResults);
+    @Deprecated
+    default List<ClientModel> getClients() {
+        return getClientsStream(null, null).collect(Collectors.toList());
+    }
+
+    Stream<ClientModel> getClientsStream();
+
+    @Deprecated
+    default List<ClientModel> getClients(Integer firstResult, Integer maxResults) {
+        return getClientsStream(firstResult, maxResults).collect(Collectors.toList());
+    }
+
+    Stream<ClientModel> getClientsStream(Integer firstResult, Integer maxResults);
+
     Long getClientsCount();
 
-    List<ClientModel> getAlwaysDisplayInConsoleClients();
+    @Deprecated
+    default List<ClientModel> getAlwaysDisplayInConsoleClients() {
+        return getAlwaysDisplayInConsoleClientsStream().collect(Collectors.toList());
+    }
+
+    Stream<ClientModel> getAlwaysDisplayInConsoleClientsStream();
 
     ClientModel addClient(String name);
 
@@ -292,7 +319,13 @@ public interface RealmModel extends RoleContainerModel {
 
     ClientModel getClientById(String id);
     ClientModel getClientByClientId(String clientId);
-    List<ClientModel> searchClientByClientId(String clientId, Integer firstResult, Integer maxResults);
+
+    @Deprecated
+    default List<ClientModel> searchClientByClientId(String clientId, Integer firstResult, Integer maxResults) {
+        return searchClientByClientIdStream(clientId, firstResult, maxResults).collect(Collectors.toList());
+    }
+
+    Stream<ClientModel> searchClientByClientIdStream(String clientId, Integer firstResult, Integer maxResults);
     
     void updateRequiredCredentials(Set<String> creds);
 
@@ -407,6 +440,16 @@ public interface RealmModel extends RoleContainerModel {
             list.add(new ClientStorageProviderModel(component));
         }
         Collections.sort(list, ClientStorageProviderModel.comparator);
+        return list;
+    }
+
+    default
+    List<RoleStorageProviderModel> getRoleStorageProviders() {
+        List<RoleStorageProviderModel> list = new LinkedList<>();
+        for (ComponentModel component : getComponents(getId(), RoleStorageProvider.class.getName())) {
+            list.add(new RoleStorageProviderModel(component));
+        }
+        Collections.sort(list, RoleStorageProviderModel.comparator);
         return list;
     }
 

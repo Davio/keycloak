@@ -87,8 +87,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_SSL_REQUIRED;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.getAuthServerContextRoot;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
+import static org.keycloak.testsuite.util.ServerURLs.getAuthServerContextRoot;
+
 import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 
 /**
@@ -195,7 +196,12 @@ public class AccountFormServiceTest extends AbstractTestRealmKeycloakTest {
 
     @Before
     public void before() {
-        userId = findUser("test-user@localhost").getId();
+        UserRepresentation user = findUser("test-user@localhost");
+
+        user.setEmail("test-user@localhost");
+        updateUser(user);
+
+        userId = user.getId();
 
         // Revert any password policy and user password changes
         setPasswordPolicy("");
@@ -406,6 +412,24 @@ public class AccountFormServiceTest extends AbstractTestRealmKeycloakTest {
         Assert.assertEquals("Invalid password: must not be equal to the username.", profilePage.getError());
         events.expectAccount(EventType.UPDATE_PASSWORD_ERROR).error(Errors.PASSWORD_REJECTED).assertEvent();
 
+
+        changePasswordPage.changePassword("password", "newPassword", "newPassword");
+        Assert.assertEquals("Your password has been updated.", profilePage.getSuccess());
+        events.expectAccount(EventType.UPDATE_PASSWORD).assertEvent();
+    }
+
+    // KEYCLOAK-12729
+    @Test
+    public void changePasswordWithNotEmailPolicy() {
+        setPasswordPolicy("notEmail(1)");
+
+        changePasswordPage.open();
+        loginPage.login("test-user@localhost", "password");
+        events.expectLogin().client("account").detail(Details.REDIRECT_URI, getAccountRedirectUrl() + "?path=password").assertEvent();
+
+        changePasswordPage.changePassword("password", "test-user@localhost", "test-user@localhost");
+        Assert.assertEquals("Invalid password: must not be equal to the email.", profilePage.getError());
+        events.expectAccount(EventType.UPDATE_PASSWORD_ERROR).error(Errors.PASSWORD_REJECTED).assertEvent();
 
         changePasswordPage.changePassword("password", "newPassword", "newPassword");
         Assert.assertEquals("Your password has been updated.", profilePage.getSuccess());

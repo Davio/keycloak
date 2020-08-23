@@ -34,6 +34,11 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
     String PUBLIC_KEY = "publicKey";
     String X509CERTIFICATE = "X509Certificate";
 
+    /**
+     * Stores the current state of the client immediately to the underlying store, similarly to a commit.
+     *
+     * @deprecated Do not use, to be removed
+     */
     void updateClient();
 
     /**
@@ -97,7 +102,6 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
     String getBaseUrl();
 
     void setBaseUrl(String url);
-
 
     boolean isBearerOnly();
     void setBearerOnly(boolean only);
@@ -169,6 +173,13 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
      * @param defaultScope
      */
     void addClientScope(ClientScopeModel clientScope, boolean defaultScope);
+
+    /**
+     * Add clientScopes with this client. Add as default scopes (if parameter 'defaultScope' is true) or optional scopes (if parameter 'defaultScope' is false)
+     * @param clientScopes
+     * @param defaultScope
+     */
+    void addClientScopes(Set<ClientScopeModel> clientScopes, boolean defaultScope);
 
     void removeClientScope(ClientScopeModel clientScope);
 

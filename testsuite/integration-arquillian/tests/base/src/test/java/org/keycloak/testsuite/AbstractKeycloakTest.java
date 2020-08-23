@@ -81,13 +81,13 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 import static org.keycloak.testsuite.admin.Users.setPasswordFor;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_HOST;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_PORT;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_SCHEME;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_SSL_REQUIRED;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_HOST;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_PORT;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SCHEME;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
 import static org.keycloak.testsuite.auth.page.AuthRealm.MASTER;
 import static org.keycloak.testsuite.util.URLUtils.navigateToUri;
-import static org.keycloak.testsuite.util.URLUtils.removeDefaultPorts;
+import static org.keycloak.testsuite.util.ServerURLs.removeDefaultPorts;
 
 /**
  *
@@ -370,7 +370,7 @@ public abstract class AbstractKeycloakTest {
 
     private void modifySamlAttributes(ClientRepresentation cr) {
         if (cr.getProtocol() != null && cr.getProtocol().equals("saml")) {
-            log.info("Modifying attributes of SAML client: " + cr.getClientId());
+            log.debug("Modifying attributes of SAML client: " + cr.getClientId());
             for (Map.Entry<String, String> entry : cr.getAttributes().entrySet()) {
                 cr.getAttributes().put(entry.getKey(), replaceHttpValuesWithHttps(entry.getValue()));
             }

@@ -22,22 +22,19 @@ import org.keycloak.component.ComponentModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.LDAPConstants;
 import org.keycloak.models.ModelDuplicateException;
+import org.keycloak.models.ModelException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.UserModelDelegate;
 import org.keycloak.models.utils.reflection.Property;
-import org.keycloak.models.utils.reflection.PropertyCriteria;
-import org.keycloak.models.utils.reflection.PropertyQueries;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.ldap.LDAPStorageProvider;
 import org.keycloak.storage.ldap.LDAPUtils;
 import org.keycloak.storage.ldap.idm.model.LDAPObject;
 import org.keycloak.storage.ldap.idm.query.Condition;
 import org.keycloak.storage.ldap.idm.query.internal.LDAPQuery;
-import org.keycloak.storage.ldap.idm.store.ldap.LDAPUtil;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -46,7 +43,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.keycloak.models.ModelException;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -194,38 +190,48 @@ public class UserAttributeLDAPStorageMapper extends AbstractLDAPStorageMapper {
 
                 @Override
                 public void setSingleAttribute(String name, String value) {
-                    if (setLDAPAttribute(name, value)) {
+                    if (UserModel.USERNAME.equals(name)) {
+                        setUsername(value);
+                    } else if (UserModel.EMAIL.equals(name)) {
+                        setEmail(value);
+                    } else if (setLDAPAttribute(name, value)) {
                         super.setSingleAttribute(name, value);
                     }
                 }
 
                 @Override
                 public void setAttribute(String name, List<String> values) {
-                    if (setLDAPAttribute(name, values)) {
+                    if (UserModel.USERNAME.equals(name)) {
+                        setUsername((values != null && values.size() > 0) ? values.get(0) : null);
+                    } else if (UserModel.EMAIL.equals(name)) {
+                        setEmail((values != null && values.size() > 0) ? values.get(0) : null);
+                    } else if (setLDAPAttribute(name, values)) {
                         super.setAttribute(name, values);
                     }
                 }
 
                 @Override
                 public void removeAttribute(String name) {
-                    if ( setLDAPAttribute(name, null)) {
+                    if (setLDAPAttribute(name, null)) {
                         super.removeAttribute(name);
                     }
                 }
 
                 @Override
                 public void setUsername(String username) {
-                    checkDuplicateUsername(userModelAttrName, username, realm, ldapProvider.getSession(), this);
-                    setLDAPAttribute(UserModel.USERNAME, username);
-                    super.setUsername(username);
+                    String lowercaseUsername = KeycloakModelUtils.toLowerCaseSafe(username);
+                    checkDuplicateUsername(userModelAttrName, lowercaseUsername, realm, ldapProvider.getSession(), this);
+                    setLDAPAttribute(UserModel.USERNAME, lowercaseUsername);
+                    super.setUsername(lowercaseUsername);
                 }
 
                 @Override
                 public void setEmail(String email) {
+                    String lowercaseEmail = KeycloakModelUtils.toLowerCaseSafe(email);
                     checkDuplicateEmail(userModelAttrName, email, realm, ldapProvider.getSession(), this);
 
                     setLDAPAttribute(UserModel.EMAIL, email);
-                    super.setEmail(email);
+                    super.setEmail(lowercaseEmail);
                 }
 
                 @Override
@@ -246,7 +252,7 @@ public class UserAttributeLDAPStorageMapper extends AbstractLDAPStorageMapper {
                             UserAttributeLDAPStorageMapper.logger.tracef("Pushing user attribute to LDAP. username: %s, Model attribute name: %s, LDAP attribute name: %s, Attribute value: %s", getUsername(), modelAttrName, ldapAttrName, value);
                         }
 
-                        ensureTransactionStarted();
+                        markUpdatedAttributeInTransaction(modelAttrName);
 
                         if (value == null) {
                             if (isMandatoryInLdap) {
@@ -430,7 +436,6 @@ public class UserAttributeLDAPStorageMapper extends AbstractLDAPStorageMapper {
     private boolean isReadOnly() {
         return parseBooleanParameter(mapperModel, READ_ONLY);
     }
-
 
     protected void setPropertyOnUserModel(Property<Object> userModelProperty, UserModel user, String ldapAttrValue) {
         if (ldapAttrValue == null) {

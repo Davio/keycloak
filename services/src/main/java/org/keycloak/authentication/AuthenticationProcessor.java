@@ -56,6 +56,7 @@ import org.keycloak.services.util.AuthenticationFlowURLHelper;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.CommonClientSessionModel;
 
+import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
@@ -508,7 +509,8 @@ public class AuthenticationProcessor {
                     .setUser(getUser())
                     .setActionUri(action)
                     .setExecution(getExecution().getId())
-                    .setFormData(request.getDecodedFormParameters())
+                    .setFormData(request.getHttpMethod().equalsIgnoreCase("post") ? request.getDecodedFormParameters() :
+                            new MultivaluedHashMap<>())
                     .setClientSessionCode(accessCode);
             if (getForwardedErrorMessage() != null) {
                 provider.addError(getForwardedErrorMessage());
@@ -1045,9 +1047,9 @@ public class AuthenticationProcessor {
     }
 
     public Response finishAuthentication(LoginProtocol protocol) {
-        event.success();
         RealmModel realm = authenticationSession.getRealm();
         ClientSessionContext clientSessionCtx = attachSession();
+        event.success();
         return AuthenticationManager.redirectAfterSuccessfulFlow(session, realm, userSession, clientSessionCtx, request, uriInfo, connection, event, authenticationSession, protocol);
 
     }

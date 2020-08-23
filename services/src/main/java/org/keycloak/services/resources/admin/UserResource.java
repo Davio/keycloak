@@ -79,7 +79,6 @@ import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
-import javax.ws.rs.NotSupportedException;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
@@ -160,6 +159,10 @@ public class UserResource {
             if (rep.getAttributes() != null) {
                 attrsToRemove = new HashSet<>(user.getAttributes().keySet());
                 attrsToRemove.removeAll(rep.getAttributes().keySet());
+                attrsToRemove.remove(UserModel.FIRST_NAME);
+                attrsToRemove.remove(UserModel.LAST_NAME);
+                attrsToRemove.remove(UserModel.EMAIL);
+                attrsToRemove.remove(UserModel.USERNAME);
             } else {
                 attrsToRemove = Collections.emptySet();
             }
@@ -185,12 +188,12 @@ public class UserResource {
             return ErrorResponse.exists("User is read only!");
         } catch (ModelException me) {
             logger.warn("Could not update user!", me);
-            return ErrorResponse.exists("Could not update user!");
+            return ErrorResponse.error("Could not update user!", Status.BAD_REQUEST);
         } catch (ForbiddenException fe) {
             throw fe;
         } catch (Exception me) { // JPA
             logger.warn("Could not update user!", me);// may be committed by JTA which can't
-            return ErrorResponse.exists("Could not update user!");
+            return ErrorResponse.error("Could not update user!", Status.BAD_REQUEST);
         }
     }
 
@@ -242,7 +245,10 @@ public class UserResource {
 
         if (rep.getAttributes() != null) {
             for (Map.Entry<String, List<String>> attr : rep.getAttributes().entrySet()) {
-                user.setAttribute(attr.getKey(), attr.getValue());
+                List<String> currentValue = user.getAttribute(attr.getKey());
+                if (currentValue == null || currentValue.size() != attr.getValue().size() || !currentValue.containsAll(attr.getValue())) {
+                    user.setAttribute(attr.getKey(), attr.getValue());
+                }
             }
 
             for (String attr : attrsToRemove) {
@@ -311,7 +317,7 @@ public class UserResource {
         userSession.setNote(IMPERSONATOR_USERNAME.toString(), impersonator);
 
         AuthenticationManager.createLoginCookie(session, realm, userSession.getUser(), userSession, session.getContext().getUri(), clientConnection);
-        URI redirect = AccountFormService.accountServiceApplicationPage(session.getContext().getUri()).build(realm.getName());
+        URI redirect = AccountFormService.accountServiceBaseUrl(session.getContext().getUri()).build(realm.getName());
         Map<String, Object> result = new HashMap<>();
         result.put("sameRealm", sameRealm);
         result.put("redirect", redirect.toString());
@@ -350,13 +356,13 @@ public class UserResource {
      *
      * @return
      */
-    @Path("offline-sessions/{clientId}")
+    @Path("offline-sessions/{clientUuid}")
     @GET
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
-    public List<UserSessionRepresentation> getOfflineSessions(final @PathParam("clientId") String clientId) {
+    public List<UserSessionRepresentation> getOfflineSessions(final @PathParam("clientUuid") String clientUuid) {
         auth.users().requireView(user);
-        ClientModel client = realm.getClientById(clientId);
+        ClientModel client = realm.getClientById(clientUuid);
         if (client == null) {
             throw new NotFoundException("Client not found");
         }
@@ -366,7 +372,7 @@ public class UserResource {
             UserSessionRepresentation rep = ModelToRepresentation.toRepresentation(session);
 
             // Update lastSessionRefresh with the timestamp from clientSession
-            AuthenticatedClientSessionModel clientSession = session.getAuthenticatedClientSessionByClient(clientId);
+            AuthenticatedClientSessionModel clientSession = session.getAuthenticatedClientSessionByClient(clientUuid);
 
             // Skip if userSession is not for this client
             if (clientSession == null) {
@@ -613,6 +619,7 @@ public class UserResource {
         } catch (ReadOnlyException mre) {
             throw new BadRequestException("Can't reset password as account is read only");
         } catch (ModelException e) {
+            logger.warn("Could not update user password.", e);
             Properties messages = AdminRoot.getMessages(session, realm, auth.adminAuth().getToken().getLocale());
             throw new ErrorResponseException(e.getMessage(), MessageFormat.format(messages.getProperty(e.getMessage(), e.getMessage()), e.getParameters()),
                     Status.BAD_REQUEST);
@@ -903,7 +910,7 @@ public class UserResource {
     public void removeMembership(@PathParam("groupId") String groupId) {
         auth.users().requireManageGroupMembership(user);
 
-        GroupModel group = session.realms().getGroupById(groupId, realm);
+        GroupModel group = session.groups().getGroupById(realm, groupId);
         if (group == null) {
             throw new NotFoundException("Group not found");
         }
@@ -926,7 +933,7 @@ public class UserResource {
     @NoCache
     public void joinGroup(@PathParam("groupId") String groupId) {
         auth.users().requireManageGroupMembership(user);
-        GroupModel group = session.realms().getGroupById(groupId, realm);
+        GroupModel group = session.groups().getGroupById(realm, groupId);
         if (group == null) {
             throw new NotFoundException("Group not found");
         }

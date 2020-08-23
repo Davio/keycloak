@@ -19,6 +19,7 @@ package org.keycloak.services.resources.account;
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.jboss.resteasy.spi.HttpRequest;
 import org.keycloak.common.ClientConnection;
+import org.keycloak.common.enums.AccountRestApiVersion;
 import org.keycloak.common.util.StringPropertyReplacer;
 import org.keycloak.events.Details;
 import org.keycloak.events.EventBuilder;
@@ -39,9 +40,11 @@ import org.keycloak.representations.account.ConsentScopeRepresentation;
 import org.keycloak.representations.account.UserRepresentation;
 import org.keycloak.services.ErrorResponse;
 import org.keycloak.services.managers.Auth;
+import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.Cors;
 import org.keycloak.services.resources.account.resources.ResourcesService;
+import org.keycloak.services.util.ResolveRelative;
 import org.keycloak.storage.ReadOnlyException;
 
 import javax.ws.rs.Consumes;
@@ -54,6 +57,7 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
@@ -95,8 +99,9 @@ public class AccountRestService {
     private final RealmModel realm;
     private final UserModel user;
     private final Locale locale;
+    private final AccountRestApiVersion version;
 
-    public AccountRestService(KeycloakSession session, Auth auth, ClientModel client, EventBuilder event) {
+    public AccountRestService(KeycloakSession session, Auth auth, ClientModel client, EventBuilder event, AccountRestApiVersion version) {
         this.session = session;
         this.auth = auth;
         this.realm = auth.getRealm();
@@ -104,6 +109,7 @@ public class AccountRestService {
         this.client = client;
         this.event = event;
         this.locale = session.getContext().resolveLocale(user);
+        this.version = version;
     }
     
     public void init() {
@@ -142,7 +148,14 @@ public class AccountRestService {
         rep.setLastName(user.getLastName());
         rep.setEmail(user.getEmail());
         rep.setEmailVerified(user.isEmailVerified());
-        rep.setAttributes(user.getAttributes());
+        rep.setEmailVerified(user.isEmailVerified());
+        Map<String, List<String>> attributes = user.getAttributes();
+        Map<String, List<String>> copiedAttributes = new HashMap<>(attributes);
+        copiedAttributes.remove(UserModel.FIRST_NAME);
+        copiedAttributes.remove(UserModel.LAST_NAME);
+        copiedAttributes.remove(UserModel.EMAIL);
+        copiedAttributes.remove(UserModel.USERNAME);
+        rep.setAttributes(copiedAttributes);
 
         return Cors.add(request, Response.ok(rep)).auth().allowedOrigins(auth.getToken()).build();
     }
@@ -204,12 +217,26 @@ public class AccountRestService {
             user.setLastName(userRep.getLastName());
 
             if (userRep.getAttributes() != null) {
-                for (String k : user.getAttributes().keySet()) {
+                Set<String> attributeKeys = new HashSet<>(user.getAttributes().keySet());
+                // We store username and other attributes as attributes (for future UserProfile)
+                // but don't propagate them to the UserRepresentation, so userRep will never contain them
+                // if the user did not explicitly add them
+                attributeKeys.remove(UserModel.FIRST_NAME);
+                attributeKeys.remove(UserModel.LAST_NAME);
+                attributeKeys.remove(UserModel.EMAIL);
+                attributeKeys.remove(UserModel.USERNAME);
+                for (String k : attributeKeys) {
                     if (!userRep.getAttributes().containsKey(k)) {
                         user.removeAttribute(k);
                     }
                 }
 
+                Map<String, List<String>> attributes = userRep.getAttributes();
+                // Make sure we don't accidentally update any of the fields through attributes
+                attributes.remove(UserModel.FIRST_NAME);
+                attributes.remove(UserModel.LAST_NAME);
+                attributes.remove(UserModel.EMAIL);
+                attributes.remove(UserModel.USERNAME);
                 for (Map.Entry<String, List<String>> e : userRep.getAttributes().entrySet()) {
                     user.setAttribute(e.getKey(), e.getValue());
                 }
@@ -250,39 +277,6 @@ public class AccountRestService {
 
     // TODO Federated identities
 
-    /**
-     * Returns the applications with the given id in the specified realm.
-     *
-     * @param clientId client id to search for
-     * @return application with the provided id
-     */
-    @Path("/applications/{clientId}")
-    @GET
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response getApplication(final @PathParam("clientId") String clientId) {
-        checkAccountApiEnabled();
-        auth.requireOneOf(AccountRoles.MANAGE_ACCOUNT, AccountRoles.VIEW_APPLICATIONS);
-        ClientModel client = realm.getClientByClientId(clientId);
-        if (client == null || client.isBearerOnly() || client.getBaseUrl() == null) {
-            return Cors.add(request, Response.status(Response.Status.NOT_FOUND).entity("No client with clientId: " + clientId + " found.")).build();
-        }
-
-        List<String> inUseClients = new LinkedList<>();
-        if(!session.sessions().getUserSessions(realm, client).isEmpty()) {
-            inUseClients.add(clientId);
-        }
-
-        List<String> offlineClients = new LinkedList<>();
-        if(session.sessions().getOfflineSessionsCount(realm, client) > 0) {
-            offlineClients.add(clientId);
-        }
-
-        UserConsentModel consentModel = session.users().getConsentByClient(realm, user.getId(), client.getId());
-        Map<String, UserConsentModel> consentModels = Collections.singletonMap(client.getClientId(), consentModel);
-
-        return Cors.add(request, Response.ok(modelToRepresentation(client, inUseClients, offlineClients, consentModels))).build();
-    }
-
     private ClientRepresentation modelToRepresentation(ClientModel model, List<String> inUseClients, List<String> offlineClients, Map<String, UserConsentModel> consents) {
         ClientRepresentation representation = new ClientRepresentation();
         representation.setClientId(model.getClientId());
@@ -291,7 +285,9 @@ public class AccountRestService {
         representation.setUserConsentRequired(model.isConsentRequired());
         representation.setInUse(inUseClients.contains(model.getClientId()));
         representation.setOfflineAccess(offlineClients.contains(model.getClientId()));
+        representation.setRootUrl(model.getRootUrl());
         representation.setBaseUrl(model.getBaseUrl());
+        representation.setEffectiveUrl(ResolveRelative.resolveRelativeUri(session, model.getRootUrl(), model.getBaseUrl()));
         UserConsentModel consentModel = consents.get(model.getClientId());
         if(consentModel != null) {
             representation.setConsent(modelToRepresentation(consentModel));
@@ -362,6 +358,7 @@ public class AccountRestService {
         }
 
         session.users().revokeConsentForClient(realm, user.getId(), client.getId());
+        new UserSessionManager(session).revokeOfflineToken(user, client);
         event.success();
 
         return Cors.add(request, Response.noContent()).build();
@@ -485,7 +482,7 @@ public class AccountRestService {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @NoCache
-    public Response applications() {
+    public Response applications(@QueryParam("name") String name) {
         checkAccountApiEnabled();
         auth.requireOneOf(AccountRoles.MANAGE_ACCOUNT, AccountRoles.VIEW_APPLICATIONS);
 
@@ -525,13 +522,24 @@ public class AccountRestService {
 
         List<ClientRepresentation> apps = new LinkedList<ClientRepresentation>();
         for (ClientModel client : clients) {
-            if (client.isBearerOnly() || client.getBaseUrl() == null) {
+            if (client.isBearerOnly() || client.getBaseUrl() == null || client.getBaseUrl().isEmpty()) {
                 continue;
             }
-            apps.add(modelToRepresentation(client, inUseClients, offlineClients, consentModels));
+            else if (matches(client, name)) {
+                apps.add(modelToRepresentation(client, inUseClients, offlineClients, consentModels));
+            }
         }
 
         return Cors.add(request, Response.ok(apps)).auth().allowedOrigins(auth.getToken()).build();
+    }
+
+    private boolean matches(ClientModel client, String name) {
+        if(name == null)
+            return true;
+        else if(client.getName() == null)
+            return false;
+        else
+            return client.getName().toLowerCase().contains(name.toLowerCase());
     }
 
     // TODO Logs

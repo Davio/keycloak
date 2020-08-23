@@ -225,6 +225,11 @@ public class RepresentationToModel {
         if (rep.getClientSessionMaxLifespan() != null)
             newRealm.setClientSessionMaxLifespan(rep.getClientSessionMaxLifespan());
 
+        if (rep.getClientOfflineSessionIdleTimeout() != null)
+            newRealm.setClientOfflineSessionIdleTimeout(rep.getClientOfflineSessionIdleTimeout());
+        if (rep.getClientOfflineSessionMaxLifespan() != null)
+            newRealm.setClientOfflineSessionMaxLifespan(rep.getClientOfflineSessionMaxLifespan());
+
         if (rep.getAccessCodeLifespan() != null) newRealm.setAccessCodeLifespan(rep.getAccessCodeLifespan());
         else newRealm.setAccessCodeLifespan(60);
 
@@ -321,8 +326,9 @@ public class RepresentationToModel {
             }
         }
 
+        Map<String, ClientModel> createdClients = new HashMap<>();
         if (rep.getClients() != null) {
-            createClients(session, rep, newRealm, mappedFlows);
+            createdClients = createClients(session, rep, newRealm, mappedFlows);
         }
 
         importRoles(rep.getRoles(), newRealm);
@@ -337,20 +343,19 @@ public class RepresentationToModel {
         if (rep.getClients() != null) {
             for (ClientRepresentation resourceRep : rep.getClients()) {
                 if (resourceRep.getDefaultRoles() != null) {
-                    ClientModel clientModel = newRealm.getClientByClientId(resourceRep.getClientId());
+                    ClientModel clientModel = createdClients.computeIfAbsent(resourceRep.getClientId(), k -> newRealm.getClientByClientId(resourceRep.getClientId()));
                     clientModel.updateDefaultRoles(resourceRep.getDefaultRoles());
+                    createdClients.put(clientModel.getClientId(), clientModel);
                 }
             }
         }
 
         // Now that all possible roles and clients are created, create scope mappings
 
-        //Map<String, ClientModel> appMap = newRealm.getClientNameMap();
-
         if (rep.getClientScopeMappings() != null) {
 
             for (Map.Entry<String, List<ScopeMappingRepresentation>> entry : rep.getClientScopeMappings().entrySet()) {
-                ClientModel app = newRealm.getClientByClientId(entry.getKey());
+                ClientModel app = createdClients.computeIfAbsent(entry.getKey(), k -> newRealm.getClientByClientId(entry.getKey()));
                 if (app == null) {
                     throw new RuntimeException("Unable to find client role mappings for client: " + entry.getKey());
                 }
@@ -359,17 +364,19 @@ public class RepresentationToModel {
         }
 
         if (rep.getScopeMappings() != null) {
+            Map<String, RoleModel> roleModelMap = newRealm.getRolesStream().collect(Collectors.toMap(RoleModel::getId, Function.identity()));
+
             for (ScopeMappingRepresentation scope : rep.getScopeMappings()) {
                 ScopeContainerModel scopeContainer = getScopeContainerHavingScope(newRealm, scope);
-
                 for (String roleString : scope.getRoles()) {
-                    RoleModel role = newRealm.getRole(roleString.trim());
+                    final String roleStringTrimmed = roleString.trim();
+                    RoleModel role = roleModelMap.computeIfAbsent(roleStringTrimmed, k -> newRealm.getRole(roleStringTrimmed));
                     if (role == null) {
-                        role = newRealm.addRole(roleString.trim());
+                        role = newRealm.addRole(roleString);
+                        roleModelMap.put(role.getId(), role);
                     }
                     scopeContainer.addScopeMapping(role);
                 }
-
             }
         }
 
@@ -407,14 +414,13 @@ public class RepresentationToModel {
 
         if (rep.getUsers() != null) {
             for (UserRepresentation userRep : rep.getUsers()) {
-                UserModel user = createUser(session, newRealm, userRep);
+                createUser(session, newRealm, userRep);
             }
         }
 
         if (rep.getFederatedUsers() != null) {
             for (UserRepresentation userRep : rep.getFederatedUsers()) {
                 importFederatedUser(session, newRealm, userRep);
-
             }
         }
 
@@ -1097,6 +1103,10 @@ public class RepresentationToModel {
             realm.setClientSessionIdleTimeout(rep.getClientSessionIdleTimeout());
         if (rep.getClientSessionMaxLifespan() != null)
             realm.setClientSessionMaxLifespan(rep.getClientSessionMaxLifespan());
+        if (rep.getClientOfflineSessionIdleTimeout() != null)
+            realm.setClientOfflineSessionIdleTimeout(rep.getClientOfflineSessionIdleTimeout());
+        if (rep.getClientOfflineSessionMaxLifespan() != null)
+            realm.setClientOfflineSessionMaxLifespan(rep.getClientOfflineSessionMaxLifespan());
         if (rep.getRequiredCredentials() != null) {
             realm.updateRequiredCredentials(rep.getRequiredCredentials());
         }
@@ -1588,7 +1598,7 @@ public class RepresentationToModel {
     }
 
     public static ClientScopeModel createClientScope(KeycloakSession session, RealmModel realm, ClientScopeRepresentation resourceRep) {
-        logger.debug("Create client scope: {0}" + resourceRep.getName());
+        logger.debugv("Create client scope: {0}", resourceRep.getName());
 
         ClientScopeModel clientScope = resourceRep.getId() != null ? realm.addClientScope(resourceRep.getId(), resourceRep.getName()) : realm.addClientScope(resourceRep.getName());
         if (resourceRep.getName() != null) clientScope.setName(resourceRep.getName());

@@ -393,6 +393,8 @@ public class OIDCIdentityProvider extends AbstractOAuth2IdentityProvider<OIDCIde
         String id = idToken.getSubject();
         BrokeredIdentityContext identity = new BrokeredIdentityContext(id);
         String name = (String) idToken.getOtherClaims().get(IDToken.NAME);
+        String givenName = (String)idToken.getOtherClaims().get(IDToken.GIVEN_NAME);
+        String familyName = (String)idToken.getOtherClaims().get(IDToken.FAMILY_NAME);
         String preferredUsername = (String) idToken.getOtherClaims().get(getusernameClaimNameForIdToken());
         String email = (String) idToken.getOtherClaims().get(IDToken.EMAIL);
 
@@ -436,6 +438,8 @@ public class OIDCIdentityProvider extends AbstractOAuth2IdentityProvider<OIDCIde
 
                     id = getJsonProperty(userInfo, "sub");
                     name = getJsonProperty(userInfo, "name");
+                    givenName = getJsonProperty(userInfo, IDToken.GIVEN_NAME);
+                    familyName = getJsonProperty(userInfo, IDToken.FAMILY_NAME);
                     preferredUsername = getUsernameFromUserInfo(userInfo);
                     email = getJsonProperty(userInfo, "email");
                     AbstractJsonUserAttributeMapper.storeUserProfileForMapper(identity, userInfo, getConfig().getAlias());
@@ -445,7 +449,19 @@ public class OIDCIdentityProvider extends AbstractOAuth2IdentityProvider<OIDCIde
         identity.getContextData().put(VALIDATED_ID_TOKEN, idToken);
 
         identity.setId(id);
-        identity.setName(name);
+
+        if (givenName != null) {
+            identity.setFirstName(givenName);
+        }
+
+        if (familyName != null) {
+            identity.setLastName(familyName);
+        }
+
+        if (givenName == null && familyName == null) {
+            identity.setName(name);
+        }
+
         identity.setEmail(email);
 
         identity.setBrokerUserId(getConfig().getAlias() + "." + id);
@@ -514,7 +530,7 @@ public class OIDCIdentityProvider extends AbstractOAuth2IdentityProvider<OIDCIde
         }
     }
 
-    protected JsonWebToken validateToken(String encodedToken) {
+    public JsonWebToken validateToken(String encodedToken) {
         boolean ignoreAudience = false;
 
         return validateToken(encodedToken, ignoreAudience);
@@ -586,19 +602,23 @@ public class OIDCIdentityProvider extends AbstractOAuth2IdentityProvider<OIDCIde
     @Override
     public boolean isIssuer(String issuer, MultivaluedMap<String, String> params) {
         if (!supportsExternalExchange()) return false;
-        String requestedIssuer = params.getFirst(OAuth2Constants.SUBJECT_ISSUER);
+        String requestedIssuer = params == null ? null : params.getFirst(OAuth2Constants.SUBJECT_ISSUER);
         if (requestedIssuer == null) requestedIssuer = issuer;
         if (requestedIssuer.equals(getConfig().getAlias())) return true;
+        
+        String trustedIssuers = getConfig().getIssuer();
 
-        String[] issuers = getConfig().getIssuer().split(",");
+        if (trustedIssuers != null && trustedIssuers.length() > 0) {
+            String[] issuers = trustedIssuers.split(",");
 
-        for (String trustedIssuer : issuers) {
-            if (requestedIssuer.equals(trustedIssuer.trim())) {
-                return true;
+            for (String trustedIssuer : issuers) {
+                if (requestedIssuer.equals(trustedIssuer.trim())) {
+                    return true;
+                }
             }
         }
+        
         return false;
-
     }
 
     protected boolean supportsExternalExchange() {

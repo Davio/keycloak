@@ -29,6 +29,7 @@ import org.keycloak.storage.client.ClientStorageProvider;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -507,6 +508,32 @@ public class RealmAdapter implements CachedRealmModel {
     }
 
     @Override
+    public int getClientOfflineSessionIdleTimeout() {
+        if (isUpdated())
+            return updated.getClientOfflineSessionIdleTimeout();
+        return cached.getClientOfflineSessionIdleTimeout();
+    }
+
+    @Override
+    public void setClientOfflineSessionIdleTimeout(int seconds) {
+        getDelegateForUpdate();
+        updated.setClientOfflineSessionIdleTimeout(seconds);
+    }
+
+    @Override
+    public int getClientOfflineSessionMaxLifespan() {
+        if (isUpdated())
+            return updated.getClientOfflineSessionMaxLifespan();
+        return cached.getClientOfflineSessionMaxLifespan();
+    }
+
+    @Override
+    public void setClientOfflineSessionMaxLifespan(int seconds) {
+        getDelegateForUpdate();
+        updated.setClientOfflineSessionMaxLifespan(seconds);
+    }
+
+    @Override
     public int getAccessTokenLifespan() {
         if (isUpdated()) return updated.getAccessTokenLifespan();
         return cached.getAccessTokenLifespan();
@@ -674,7 +701,7 @@ public class RealmAdapter implements CachedRealmModel {
     @Override
     public RoleModel getRoleById(String id) {
         if (isUpdated()) return updated.getRoleById(id);
-        return cacheSession.getRoleById(id, this);
+        return cacheSession.getRoleById(this, id);
      }
 
     @Override
@@ -683,7 +710,7 @@ public class RealmAdapter implements CachedRealmModel {
 
         List<GroupModel> defaultGroups = new LinkedList<>();
         for (String id : cached.getDefaultGroups()) {
-            defaultGroups.add(cacheSession.getGroupById(id, this));
+            defaultGroups.add(cacheSession.getGroupById(this, id));
         }
         return Collections.unmodifiableList(defaultGroups);
 
@@ -729,13 +756,13 @@ public class RealmAdapter implements CachedRealmModel {
     }
 
     @Override
-    public List<ClientModel> getClients() {
-        return cacheSession.getClients(this);
+    public Stream<ClientModel> getClientsStream() {
+        return cacheSession.getClientsStream(this);
     }
 
     @Override
-    public List<ClientModel> getAlwaysDisplayInConsoleClients() {
-        return cacheSession.getAlwaysDisplayInConsoleClients(this);
+    public Stream<ClientModel> getAlwaysDisplayInConsoleClientsStream() {
+        return cacheSession.getAlwaysDisplayInConsoleClientsStream(this);
     }
 
     @Override
@@ -750,28 +777,28 @@ public class RealmAdapter implements CachedRealmModel {
 
     @Override
     public boolean removeClient(String id) {
-        return cacheSession.removeClient(id, this);
+        return cacheSession.removeClient(this, id);
     }
 
     @Override
     public ClientModel getClientById(String id) {
         if (isUpdated()) return updated.getClientById(id);
-        return cacheSession.getClientById(id, this);
+        return cacheSession.getClientById(this, id);
     }
 
     @Override
     public ClientModel getClientByClientId(String clientId) {
-        return cacheSession.getClientByClientId(clientId, this);
+        return cacheSession.getClientByClientId(this, clientId);
     }
 
     @Override
-    public List<ClientModel> searchClientByClientId(String clientId, Integer firstResult, Integer maxResults) {
-        return cacheSession.searchClientsByClientId(clientId, firstResult, maxResults, this);
+    public Stream<ClientModel> searchClientByClientIdStream(String clientId, Integer firstResult, Integer maxResults) {
+        return cacheSession.searchClientsByClientIdStream(this, clientId, firstResult, maxResults);
     }
 
     @Override
-    public List<ClientModel> getClients(Integer firstResult, Integer maxResults) {
-        return cacheSession.getClients(this, firstResult, maxResults);
+    public Stream<ClientModel> getClientsStream(Integer firstResult, Integer maxResults) {
+        return cacheSession.getClientsStream(this, firstResult, maxResults);
     }
 
     @Override
@@ -996,18 +1023,18 @@ public class RealmAdapter implements CachedRealmModel {
     }
 
     @Override
-    public Set<RoleModel> getRoles() {
-        return cacheSession.getRealmRoles(this);
+    public Stream<RoleModel> getRolesStream() {
+        return cacheSession.getRealmRolesStream(this);
     }
     
     @Override
-    public Set<RoleModel> getRoles(Integer first, Integer max) {
-        return cacheSession.getRealmRoles(this, first, max);
+    public Stream<RoleModel> getRolesStream(Integer first, Integer max) {
+        return cacheSession.getRealmRolesStream(this, first, max);
     }
 
     @Override
-    public Set<RoleModel> searchForRoles(String search, Integer first, Integer max) {
-        return cacheSession.searchForRoles(this, search, first, max);
+    public Stream<RoleModel> searchForRolesStream(String search, Integer first, Integer max) {
+        return cacheSession.searchForRolesStream(this, search, first, max);
     }
     
     @Override
@@ -1022,7 +1049,7 @@ public class RealmAdapter implements CachedRealmModel {
 
     @Override
     public boolean removeRole(RoleModel role) {
-        return cacheSession.removeRole(this, role);
+        return cacheSession.removeRole(role);
     }
 
 
@@ -1389,7 +1416,7 @@ public class RealmAdapter implements CachedRealmModel {
 
     @Override
     public GroupModel getGroupById(String id) {
-        return cacheSession.getGroupById(id, this);
+        return cacheSession.getGroupById(this, id);
     }
 
     @Override
@@ -1655,4 +1682,8 @@ public class RealmAdapter implements CachedRealmModel {
         return cached.getAttributes();
     }
 
+    @Override
+    public String toString() {
+        return String.format("%s@%08x", getId(), hashCode());
+    }
 }

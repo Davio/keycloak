@@ -17,11 +17,8 @@
 
 package org.keycloak.testsuite.admin;
 
-import org.hamcrest.Matchers;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.keycloak.admin.client.resource.IdentityProviderResource;
 import org.keycloak.common.enums.SslRequired;
 import org.keycloak.dom.saml.v2.metadata.EndpointType;
@@ -35,7 +32,6 @@ import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.IdentityProviderMapperModel;
 import org.keycloak.models.IdentityProviderMapperSyncMode;
 import org.keycloak.models.IdentityProviderModel;
-import org.keycloak.models.IdentityProviderSyncMode;
 import org.keycloak.models.utils.StripSecretsUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.representations.idm.AdminEventRepresentation;
@@ -44,7 +40,6 @@ import org.keycloak.representations.idm.ErrorRepresentation;
 import org.keycloak.representations.idm.IdentityProviderMapperRepresentation;
 import org.keycloak.representations.idm.IdentityProviderMapperTypeRepresentation;
 import org.keycloak.representations.idm.IdentityProviderRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.saml.common.exceptions.ParsingException;
 import org.keycloak.saml.processing.core.parsers.saml.SAMLParser;
 import org.keycloak.testsuite.Assert;
@@ -90,7 +85,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_SSL_REQUIRED;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
 import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
 import static org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer.REMOTE;
 
@@ -191,8 +186,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
             oidcConfig.setAuthorizationUrl("invalid://test");
 
             try (Response response = this.realm.identityProviders().create(newIdentityProvider)) {
-                assertEquals(AUTH_SERVER_SSL_REQUIRED ? Response.Status.BAD_REQUEST.getStatusCode() :
-                        Response.Status.CREATED.getStatusCode(), response.getStatus());
+                assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
                 ErrorRepresentation error = response.readEntity(ErrorRepresentation.class);
                 assertEquals("The url [authorization_url] is malformed", error.getErrorMessage());
             }
@@ -201,8 +195,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
             oidcConfig.setTokenUrl("http://test");
 
             try (Response response = this.realm.identityProviders().create(newIdentityProvider)) {
-                assertEquals(AUTH_SERVER_SSL_REQUIRED ? Response.Status.BAD_REQUEST.getStatusCode() :
-                        Response.Status.CREATED.getStatusCode(), response.getStatus());
+                assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
                 ErrorRepresentation error = response.readEntity(ErrorRepresentation.class);
                 assertEquals("The url [token_url] requires secure connections", error.getErrorMessage());
             }
@@ -212,8 +205,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
             oidcConfig.setJwksUrl("http://test");
 
             try (Response response = this.realm.identityProviders().create(newIdentityProvider)) {
-                assertEquals(AUTH_SERVER_SSL_REQUIRED ? Response.Status.BAD_REQUEST.getStatusCode() :
-                        Response.Status.CREATED.getStatusCode(), response.getStatus());
+                assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
                 ErrorRepresentation error = response.readEntity(ErrorRepresentation.class);
                 assertEquals("The url [jwks_url] requires secure connections", error.getErrorMessage());
             }
@@ -224,8 +216,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
             oidcConfig.setLogoutUrl("http://test");
 
             try (Response response = this.realm.identityProviders().create(newIdentityProvider)) {
-                assertEquals(AUTH_SERVER_SSL_REQUIRED ? Response.Status.BAD_REQUEST.getStatusCode() :
-                        Response.Status.CREATED.getStatusCode(), response.getStatus());
+                assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
                 ErrorRepresentation error = response.readEntity(ErrorRepresentation.class);
                 assertEquals("The url [logout_url] requires secure connections", error.getErrorMessage());
             }
@@ -237,8 +228,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
             oidcConfig.setUserInfoUrl("http://test");
 
             try (Response response = this.realm.identityProviders().create(newIdentityProvider)) {
-                assertEquals(AUTH_SERVER_SSL_REQUIRED ? Response.Status.BAD_REQUEST.getStatusCode() :
-                        Response.Status.CREATED.getStatusCode(), response.getStatus());
+                assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
                 ErrorRepresentation error = response.readEntity(ErrorRepresentation.class);
                 assertEquals("The url [userinfo_url] requires secure connections", error.getErrorMessage());
             }
@@ -574,7 +564,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
         create(createRep("saml", "saml"));
         provider = realm.identityProviders().get("saml");
         mapperTypes = provider.getMapperTypes();
-        assertMapperTypes(mapperTypes, "saml-user-attribute-idp-mapper", "saml-role-idp-mapper", "saml-username-idp-mapper");
+        assertMapperTypes(mapperTypes, "saml-user-attribute-idp-mapper", "saml-role-idp-mapper", "saml-username-idp-mapper", "saml-advanced-role-idp-mapper");
     }
 
     private void assertMapperTypes(Map<String, IdentityProviderMapperTypeRepresentation> mapperTypes, String ... mapperIds) {
@@ -896,8 +886,10 @@ public class IdentityProviderTest extends AbstractAdminTest {
           "postBindingAuthnRequest",
           "singleSignOnServiceUrl",
           "wantAuthnRequestsSigned",
+          "nameIDPolicyFormat",
           "signingCertificate",
-          "addExtensionsElementWithKeyInfo"
+          "addExtensionsElementWithKeyInfo",
+          "loginHint"
         ));
         assertThat(config, hasEntry("validateSignature", "true"));
         assertThat(config, hasEntry("singleLogoutServiceUrl", "http://localhost:8080/auth/realms/master/protocol/saml"));
@@ -906,6 +898,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
         assertThat(config, hasEntry("singleSignOnServiceUrl", "http://localhost:8080/auth/realms/master/protocol/saml"));
         assertThat(config, hasEntry("wantAuthnRequestsSigned", "true"));
         assertThat(config, hasEntry("addExtensionsElementWithKeyInfo", "false"));
+        assertThat(config, hasEntry("nameIDPolicyFormat", "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"));
         assertThat(config, hasEntry(is("signingCertificate"), notNullValue()));
     }
 
@@ -938,9 +931,7 @@ public class IdentityProviderTest extends AbstractAdminTest {
         Assert.assertTrue("AuthnRequestsSigned", desc.isAuthnRequestsSigned());
 
         Set<String> expected = new HashSet<>(Arrays.asList(
-                "urn:oasis:names:tc:SAML:2.0:protocol",
-                "urn:oasis:names:tc:SAML:1.1:protocol",
-                "http://schemas.xmlsoap.org/ws/2003/07/secext"));
+                "urn:oasis:names:tc:SAML:2.0:protocol"));
 
         Set<String> actual = new HashSet<>(desc.getProtocolSupportEnumeration());
 

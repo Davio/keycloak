@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oidc;
 
+import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.jboss.resteasy.spi.HttpRequest;
 import org.jboss.resteasy.spi.ResteasyProviderFactory;
@@ -35,6 +36,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oidc.endpoints.AuthorizationEndpoint;
 import org.keycloak.protocol.oidc.endpoints.LoginStatusIframeEndpoint;
 import org.keycloak.protocol.oidc.endpoints.LogoutEndpoint;
+import org.keycloak.protocol.oidc.endpoints.ThirdPartyCookiesIframeEndpoint;
 import org.keycloak.protocol.oidc.endpoints.TokenEndpoint;
 import org.keycloak.protocol.oidc.endpoints.TokenRevocationEndpoint;
 import org.keycloak.protocol.oidc.endpoints.UserInfoEndpoint;
@@ -44,6 +46,9 @@ import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.Cors;
 import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.services.util.CacheControlUtil;
+
+import java.util.LinkedList;
+import java.util.List;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.NotFoundException;
@@ -58,8 +63,6 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Resource class for the oauth/openid connect token service
@@ -68,6 +71,8 @@ import java.util.List;
  * @version $Revision: 1 $
  */
 public class OIDCLoginProtocolService {
+
+    private static final Logger logger = Logger.getLogger(OIDCLoginProtocolService.class);
 
     private RealmModel realm;
     private TokenManager tokenManager;
@@ -191,6 +196,13 @@ public class OIDCLoginProtocolService {
         return endpoint;
     }
 
+    @Path("3p-cookies")
+    public Object thirdPartyCookiesCheck() {
+        ThirdPartyCookiesIframeEndpoint endpoint = new ThirdPartyCookiesIframeEndpoint();
+        ResteasyProviderFactory.getInstance().injectProperties(endpoint);
+        return endpoint;
+    }
+
     @OPTIONS
     @Path("certs")
     @Produces(MediaType.APPLICATION_JSON)
@@ -232,6 +244,8 @@ public class OIDCLoginProtocolService {
         return endpoint;
     }
 
+    /* old deprecated logout endpoint needs to be removed in the future
+    * https://issues.redhat.com/browse/KEYCLOAK-2940 */
     @Path("logout")
     public Object logout() {
         LogoutEndpoint endpoint = new LogoutEndpoint(tokenManager, realm, event);
